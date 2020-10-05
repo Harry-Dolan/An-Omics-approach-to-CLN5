@@ -1,0 +1,194 @@
+---
+title: "Edge_Limma"
+author: "Harry Dolan"
+date: "17/09/2020"
+output: html_document
+---
+## read in feature counts and set names and condition...
+```{r}
+files <- read.delim("Rsubread.txt")
+names(files) = c("Control_2", "Control_3", "Guide1_2", "Guide1_3", "Guide2_2", "Guide2_3", "Control_1", "Guide1_1", "Guide2_1")
+group <- c("WT", "WT", "MT", "MT", "MT", "MT", "WT", "MT", "MT")
+samplenames <- c("Control_2", "Control_3", "Guide1_2", "Guide1_3", "Guide2_2", "Guide2_3", "Control_1", "Guide1_1", "Guide2_1")
+cond <- c("Control", "Control", "Guide1", "Guide1", "Guide2", "Guide2", "Control", "Guide1", "Guide2")
+set <- c("New", "New", "New", "New", "New", "New", "Old", "Old", "Old")
+
+```
+
+
+## DGE Object
+```{r}
+library(edgeR)
+x <- DGEList(counts = as.matrix(files))
+colnames(x) <- samplenames
+x$samples$group <- group
+x$samples$cond <- cond
+x$samples$set <- set
+
+x$samples
+```
+
+## CPM, logCPM, + Mean and Median Lib Size
+```{r}
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE)
+
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+c(L, M)
+```
+
+## How many genes have a zero count?
+```{r}
+table(rowSums(x$counts==0)==9)
+```
+
+## EdgeR Keep Exprs Cull
+```{r}
+library(edgeR)
+keep.exprs <- filterByExpr(x, group=group)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+dim(x)
+```
+
+Log-CPM density Plot
+```{r}
+library(RColorBrewer)
+
+lcpm.cutoff <- log2(10/M + 2/L)
+nsamples <- ncol(x)
+col <- brewer.pal(nsamples, "Paired")
+par(mfrow=c(1,2))
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="A. Raw data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+  lines(den$x, den$y, col=col[i], lwd=2)
+}
+legend(0, 0.25, samplenames, text.col=col, bty="n")
+lcpm <- cpm(x, log=TRUE)
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="B. Filtered data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+  lines(den$x, den$y, col=col[i], lwd=2)
+}
+legend(0, 0.25, samplenames, text.col=col, bty="n")
+```
+
+## Normalisation Factors + Normalisation
+```{r}
+prenorm <- x
+x <- calcNormFactors(x, method = "TMM")
+x$samples$norm.factors
+
+par(mfrow=c(1,2))
+lcpm <- cpm(prenorm, log=TRUE)
+boxplot(lcpm, las=2, col=col, main="")
+title(main="A: Unnormalised data", ylab="Log-cpm")
+x <- calcNormFactors(x)
+x$samples$norm.factors
+
+lcpm <- cpm(x, log=TRUE)
+boxplot(lcpm, las=2, col=col, main="")
+title(main="B: Normalised data", ylab="Log-cpm")
+```
+
+## PCA (LogCPM variation)
+```{r}
+col.group <- group
+
+levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
+col.group <- as.character(col.group)
+col.cond <- cond
+levels(col.cond) <- brewer.pal(nlevels(col.cond), "Set2")
+col.cond <- as.character(col.cond)
+
+plotMDS(lcpm, cex = 0.75, labels=(colnames(x)), col=c(rep("blue",6), rep("red",3)) )
+title(main="A. Sample groups")
+
+```
+
+## Limma Model Matrix and Contrast Matrix
+```{r}
+design <- model.matrix(~0+cond+set)
+colnames(design) <- gsub("group", "", colnames(design))
+design
+
+contr.matrix <- makeContrasts(
+  Guide1vsControl = condGuide1 - condControl,
+  Guide2vsControl = condGuide2 - condControl,
+  Guide1vsGuide2 = condGuide1 - condGuide2,
+  levels = colnames(design))
+contr.matrix
+```
+
+## Limma Voom
+```{r}
+par(mfrow=c(2,2))
+v <- voom(x, design, plot=TRUE)
+v
+
+vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+plotSA(efit)
+title("voom: Mean-variance trend (post-fit)")
+```
+## diffeentially expressed genes
+```{r}
+tt_G1 <- topTable(efit, coef=1, n=18209)
+tt_G2 <- topTable(efit, coef=2, n=18209)
+G1_P <- tt_G1[tt_G1$adj.P.Val <= 0.05, ]
+G2_P <- tt_G2[tt_G2$adj.P.Val <= 0.05, ]
+G2_P_FC <- sum((tt_G1$adj.P.Val <= 0.05) & (tt_G1$logFC >= abs(1.5)))
+G2_P_FC <- sum((tt_G2$adj.P.Val <= 0.05) & (tt_G2$logFC >= abs(1.5)))
+```
+
+##### G1 Volcanos ######
+```{r}
+library(EnhancedVolcano)
+par(mfrow=c(2,2))
+EnhancedVolcano(tt_G1,
+                lab = rownames(tt_G1),
+                x = 'logFC',
+                y = 'P.Value',
+                xlim = c(-5, 4),
+                ylim = c(0, 6),
+                title = 'Guide 1 CLN5 Knockdown vs Control',
+                pCutoff = 0.00001,
+                FCcutoff = 0,
+                pointSize = 3.0,
+                labSize = 1.0)
+```
+
+## GSEA (min size 20, max size 200)
+```{r}
+library(tidyverse)
+tstats <- efit$t[,1]
+tstats <- tstats %>% sort(., decreasing=TRUE)
+library(ReactomePA)
+rPAgsea = gsePathway(tstats, organism = "human", nPerm=10000, minGSSize = 20, pvalueCutoff = 0.05, maxGSSize = 200, pAdjustMethod = 'BH', verbose = FALSE
+                     )
+rPAgsea %>% as.data.frame() %>% View()
+```
+
+## GSEA2 (min size 20, no max size // parent brnaches)
+```{r}
+rPAgsea2 = gsePathway(tstats, organism = "human", nPerm=10000, minGSSize = 20, pvalueCutoff = 0.05, maxGSSize = 10000, pAdjustMethod = 'BH', verbose = FALSE
+                     )
+rPAgsea2 %>% as.data.frame() %>% View()
+```
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```

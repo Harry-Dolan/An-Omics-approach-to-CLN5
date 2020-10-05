@@ -1,0 +1,58 @@
+---
+title: "Command Line Scripts"
+author: "Harry Dolan"
+date: "05/10/2020"
+output: html_document
+---
+TRIMMOMATIC
+```{r eval=FALSE}
+$ java -jar trimmomatic.jar PE File(SAMPLE_LANE_PE).fastq.gz File(SAMPLE_LANE_PE).fastq.gz
+\ File(SAMPLE_LANE_PE).trim.fastq.gz File(SAMPLE_LANE_PE).un.trim.fastq.gz \ File(SAMPLE_LANE_PE).trim.fastq.gz File(SAMPLE_LANE_PE).trim.fastq.gz \
+SLIDINGWINDOW:4:20 MINLEN:25 ILLUMINACLIP:NexteraPE-PE.fa:2:40:15
+
+```
+TRIMMOMATIC EXAMPLE USAGE  (Flow Cell"OG", SAMPLE 6, Lane 1)
+```{r eval=FALSE}
+java -jar trimmomatic.jar PE 5103-06-50-01_S6_L001_R1_001.fastq.gz \
+5103-06-50-01_S6_L001_R2_001.fastq.gz \
+OG_06_L1R1.trim.fastq.gz OG_06_L1R1.untrim.fastq.gz \
+OG_06_L1R2.trim.fastq.gz OG_06_L1R2.untrim.fastq.gz \
+SLIDINGWINDOW:4:20
+
+```
+
+Generate Reference genome
+## http://asia.ensembl.org/Homo_sapiens/Info/Index <- Link to Ensembl for gene annotations
+```{r eval=FALSE}
+
+STAR --runThreadN {16} --runMode genomeGenerate --genomeDir /path/to/resulting/STAR/genome/ --genomeFastaFiles /path/to/genome/fasta/file --sjdbGTFfile /path/to/GTF/or/GFF
+```
+
+STAR GENOME GENNERATE EXAMPLE USAGE
+```{r eval=FALSE}
+STAR --runThreadN 16 --runMode genomeGenerate --genomeDir /Network/Servers/biocldap.otago.ac.nz/Volumes/userdata/student_users/harrydolan/Documents/OG5743-188600412/ --genomeFastaFiles /Network/Servers/biocldap.otago.ac.nz/Volumes/userdata/student_users/harrydolan/Documents/OG5743-188600412/Homo_sapiens.GRCh38.dna.primary_assembly.fa/ --sjdbGTFfile /Network/Servers/biocldap.otago.ac.nz/Volumes/userdata/student_users/harrydolan/Documents/OG5743-188600412/Homo_sapiens.GRCh38.101.gtf/ --sjdbOverhang {read length - 1}
+
+```
+
+STAR alignment
+```{r eval=FALSE}
+STAR --runMode alignReads --outSAMtype BAM Unsorted --readFilesCommand zcat --genomeDir /path/to/STAR/genome/folder --outFileNamePrefix {sample name}  --readFilesIn  /path/to/R1 /path/to/R2
+
+```
+
+STAR alignment example usage 
+```{r eval=FALSE}
+STAR --runMode alignReads --outSAMtype BAM Unsorted --readFilesCommand zcat --genomeDir /Network/Servers/biocldap.otago.ac.nz/Volumes/userdata/student_users/harrydolan/Documents/OG5743-188600412/Genome_index --outFileNamePrefix Star_Align --readFilesIn /Network/Servers/biocldap.otago.ac.nz/Volumes/userdata/student_users/harrydolan/Documents/OG5743-188600412/OG_SAMP/OG5103-149509363/FASTQ_Generation_2020-02-12_08_29_31Z-205689485/5103-06-50-01_L002/OG_06_L2R1.trim.fastq.gz --sjdbOverhang {read length - 1}
+
+```
+samtools merge
+```{r eval=FALSE}
+samtools merge (Output name) *.bam
+
+```
+
+Samtools merge example usage (Flowcell OG Sample 6)
+```{r eval=FALSE}
+samtools merge OG06 *.bam
+
+```
